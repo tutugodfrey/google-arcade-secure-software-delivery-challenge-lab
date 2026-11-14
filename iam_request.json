@@ -1,0 +1,13 @@
+{
+  'resource': 'projects/qwiklabs-gcp-01-4a14e3b7cf5c/notes/vulnerability_note',
+    'policy': {
+      'bindings': [
+        {
+          'role': 'roles/containeranalysis.notes.occurrences.viewer',
+          'members': [
+            'serviceAccount:service-214533121419@gcp-sa-binaryauthorization.iam.gserviceaccount.com'
+          ]
+      }
+    ]
+  }
+}

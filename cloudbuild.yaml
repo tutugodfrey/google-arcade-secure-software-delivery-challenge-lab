@@ -1,0 +1,79 @@
+steps:
+
+# TODO: #1. Build Step. Replace the <image-name> placeholder with the correct value.
+- id: "build"
+  name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'us-east4-docker.pkg.dev/qwiklabs-gcp-01-4a14e3b7cf5c/artifact-scanning-repo/sample-image:latest', '.']
+  waitFor: ['-']
+
+# TODO: #2. Push to Artifact Registry. Replace the <image-name> placeholder with the correct value.
+- id: "push"
+  name: 'gcr.io/cloud-builders/docker'
+  args: ['push',  'us-east4-docker.pkg.dev/qwiklabs-gcp-01-4a14e3b7cf5c/artifact-scanning-repo/sample-image:latest']
+
+
+## More steps will be added here in a later section
+
+# TODO: #3. Run a vulnerability scan. Replace the <image-name> placeholder with the correct value.
+- id: scan
+  name: 'gcr.io/cloud-builders/gcloud'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    (gcloud artifacts docker images scan \
+    'us-east4-docker.pkg.dev/qwiklabs-gcp-01-4a14e3b7cf5c/artifact-scanning-repo/sample-image:latest' \
+    --location us \
+    --format="value(response.scan)") > /workspace/scan_id.txt
+
+# TODO: #4. Analyze the result of the scan. IF CRITICAL vulnerabilities are found, fail the build. 
+# Replace the <correct vulnerability> placeholders with the correct values. Case sensitive!
+- id: severity check
+  name: 'gcr.io/cloud-builders/gcloud'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+      gcloud artifacts docker images list-vulnerabilities $(cat /workspace/scan_id.txt) \
+      --format="value(vulnerability.effectiveSeverity)" | if grep -Fxq CRITICAL; \
+      then echo "Failed vulnerability check for CRITICAL level" && exit 1; else echo \
+      "No CRITICAL vulnerability found, congrats !" && exit 0; fi
+
+# TODO: #5. Sign the image only if the previous severity check passes. 
+# Replace the placeholders with the correct values: <image-name>, <attestor-name>, and <key-version>.
+# Note the <key-version> should be the **full** path to the key version.
+- id: 'create-attestation'
+  name: 'gcr.io/${PROJECT_ID}/binauthz-attestation:latest'
+  args:
+    - '--artifact-url'
+    - 'us-east4-docker.pkg.dev/qwiklabs-gcp-01-4a14e3b7cf5c/artifact-scanning-repo/sample-image:latest'
+    - '--attestor'
+    - 'projects/${PROJECT_ID}/attestors/vulnerability-attestor'
+    - '--keyversion'
+    - 'projects/${PROJECT_ID}/locations/global/keyRings/binauthz-keys/cryptoKeys/lab-key/cryptoKeyVersions/1'
+
+# TODO: #6. Re-tag the image for production and push it to the production repository using the latest tag. 
+# Replace the <image-name> and <production-image-name> placeholders with the correct values.
+- id: "push-to-prod"
+  name: 'gcr.io/cloud-builders/docker'
+  args: 
+    - 'tag' 
+    - 'us-east4-docker.pkg.dev/qwiklabs-gcp-01-4a14e3b7cf5c/artifact-scanning-repo/sample-image:latest'
+    - 'us-east4-docker.pkg.dev/qwiklabs-gcp-01-4a14e3b7cf5c/artifact-prod-repo/sample-image:latest'
+- id: "push-to-prod-final"
+  name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'us-east4-docker.pkg.dev/qwiklabs-gcp-01-4a14e3b7cf5c/artifact-scanning-repo/sample-image:latest']
+
+# TODO: #7. Deploy to Cloud Run. Replace the <image-name> and <your-region> placeholders with the correct values.
+- id: 'deploy-to-cloud-run'
+  name: 'gcr.io/cloud-builders/gcloud'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    gcloud run deploy auth-service --image='us-east4-docker.pkg.dev/qwiklabs-gcp-01-4a14e3b7cf5c/artifact-scanning-repo/sample-image:latest' \
+    --binary-authorization=default --region=us-east4 --allow-unauthenticated
+
+# TODO: #8. Replace <image-name> placeholder with the value from the build step.
+images:
+  - 'us-east4-docker.pkg.dev/qwiklabs-gcp-01-4a14e3b7cf5c/artifact-scanning-repo/sample-image:latest'
